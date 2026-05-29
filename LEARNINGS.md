@@ -60,12 +60,37 @@ This document tracks all critical engineering insights, optimization strategies,
 
 ---
 
-## 6. Framework Migration: Electron to Tauri v2 for 96% Size Reduction
+## 6. Framework Migration: Electron to Tauri v2 for 95% Size Reduction
 - **Context**: The bundled Electron application baseline size is over 114MB due to packaging Chromium and Node.js. For a simple offline tokenizer, this was computationally and structurally bloated.
 - **Resolution**:
   - Migrated to **Tauri v2** using macOS's native WebKit engine.
   - Rewrote the directory crawler and BPE tokenizing logic in highly optimized **Rust** using `tiktoken-rs` and `walkdir` (zero-cloning with lock-based singleton mutexes).
-  - Shrinked the DMG installer size from **114.1 MB** down to **4.8 MB** (a ~96% reduction!).
+  - Shrank the DMG installer size from **114.1 MB** down to **5.0 MB** (a ~95% reduction!).
   - Exposed a mock `electronAPI` window object in `src/main.tsx` that mapped original React IPC calls directly to Tauri's `invoke` API, allowing the entire React frontend to compile and run with **zero code modifications**!
   - Resolved `dispatch2` dependency bitflags compilation limit reached error by adding `#![recursion_limit = "512"]` inside `main.rs` and the cached dependency files.
+
+---
+
+## 7. Tauri v2 Native Event Interception & Drag-and-Drop Resolution
+- **Context**: In Tauri v2, when `dragDropEnabled` is `true` (default), Tauri's native layer intercepts all window drop events. This bypasses HTML5 DOM-level drag-and-drop events (like React's `onDrop`), rendering elements unresponsive.
+- **Resolution**:
+  - Registered a native event stream at the top level of `src/main.tsx` using `webviewWindow.onDragDropEvent`.
+  - Created a transparent observer bridge with `onTauriDrop` and `onTauriHover` to bubble absolute file path arrays directly into React states.
+  - Wrapped frontend handlers (like `processPaths` and `handleDrop`) in `useCallback` to guarantee stable memory references, and set up a tightly scoped `useEffect` dependency list (`[electron, processPaths]`). This prevents React from repeatedly unsubscribing and re-subscribing the native window-drop listener when the files list (`breakdown`) or other states mutate, resolving all drop freezes.
+
+---
+
+## 8. Mixed Pickers Limitation & Dedicated Controls
+- **Context**: Native file dialog packages on macOS (like `rfd` under Tauri) cannot simultaneously select mixed targets (individual files and full folders recursively) in a single dialog action.
+- **Resolution**:
+  - Split the toolbar controls into side-by-side **"Add Files"** and **"Add Folder"** buttons.
+  - Exposed dedicated native Rust commands (`select_paths` and `select_folders`) utilizing RFD's `pick_files()` and `pick_folders()` APIs, providing an extremely clean and intuitive folder scanning experience.
+
+---
+
+## 9. Code Quality & Type Safety Compliance
+- **Context**: Strict ESLint rules (`@typescript-eslint/no-explicit-any`) and TypeScript compiler constraints block builds when `any` casting is used for window or event overrides.
+- **Resolution**:
+  - Replaced all raw `any` assertions with a strongly typed `ElectronAPI` interface mapping inside both `src/App.tsx` and `src/main.tsx`.
+  - Cast environment globals safely via `unknown` checks, resulting in a **100% warning-free and error-free TypeScript compile and lint check**.
 
