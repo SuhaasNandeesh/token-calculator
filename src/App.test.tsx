@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import App from './App';
 
@@ -6,10 +6,13 @@ import App from './App';
 const mockCalculatePathTokens = vi.fn();
 const mockCalculatePathsTokensBulk = vi.fn(() => Promise.resolve({ totalTokens: 100, breakdown: [{ path: 'test-file.js', tokens: 100 }] }));
 
+let registeredHoverCallback: ((isHovering: boolean) => void) | null = null;
+
 beforeEach(() => {
   mockCalculatePathTokens.mockReset();
   mockCalculatePathsTokensBulk.mockReset();
   mockCalculatePathsTokensBulk.mockImplementation(() => Promise.resolve({ totalTokens: 100, breakdown: [{ path: 'test-file.js', tokens: 100 }] }));
+  registeredHoverCallback = null;
   const g = globalThis as unknown as { window?: { electronAPI?: unknown } };
   g.window = g.window || {};
   g.window.electronAPI = {
@@ -17,6 +20,11 @@ beforeEach(() => {
     calculatePathsTokensBulk: mockCalculatePathsTokensBulk,
     onScanProgress: vi.fn(),
     selectPaths: vi.fn(() => Promise.resolve([])),
+    onTauriHover: vi.fn((cb) => {
+      registeredHoverCallback = cb;
+      return () => { registeredHoverCallback = null; };
+    }),
+    onTauriDrop: vi.fn(),
   };
 });
 
@@ -36,11 +44,20 @@ describe('App UI', () => {
     const dragOverlay = screen.getByTestId('drag-overlay');
     expect(dragOverlay.className).toContain('opacity-0');
     
-    const dropzone = screen.getByTestId('dropzone');
-    fireEvent.dragEnter(dropzone);
+    // Simulate Tauri native drag enter
+    act(() => {
+      if (registeredHoverCallback) {
+        registeredHoverCallback(true);
+      }
+    });
     expect(dragOverlay.className).toContain('opacity-100');
     
-    fireEvent.dragLeave(dropzone);
+    // Simulate Tauri native drag leave
+    act(() => {
+      if (registeredHoverCallback) {
+        registeredHoverCallback(false);
+      }
+    });
     expect(dragOverlay.className).toContain('opacity-0');
   });
 
