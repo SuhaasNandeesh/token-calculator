@@ -102,3 +102,13 @@ This document tracks all critical engineering insights, optimization strategies,
 - **Resolution**:
   - Cleaned up active disk mounts using macOS native `hdiutil detach "/Volumes/Token Calculator"` (and variants), restoring a completely clean mount list and enabling pristine compilations.
 
+---
+
+## 11. Tauri v2 macOS Draggability, Drop Races, & App Zipping
+- **Context**: Custom-framed windows in Tauri v2 on macOS do not support Electron-specific `WebkitAppRegion` drag variables, rendering the window locked and immovable. Additionally, registering overlapping standard HTML5 drop events alongside Tauri's native `tauri://drag-drop` listener triggers parallel execution paths that race and cause folder/file crawler silent calculation errors.
+- **Resolution**:
+  - **Draggability**: Replaced `WebkitAppRegion` with `data-tauri-drag-region` on the macOS top Traffic Lights Spacer and the header's left-aligned title wrapper. Removed all redundant `no-drag` inline overrides across JSX tags as they are no-ops in Tauri.
+  - **Drag-and-Drop Race Avoidance**: Stripped React/HTML5 `onDrop` and `onDragEnter/Leave/Over` handlers from JSX components. Added a simple global window `dragover` and `drop` event listener in `useEffect` that calls `e.preventDefault()`, allowing Tauri's native event listeners to receive absolute paths recursively without any UI races or browser navigation defaults.
+  - **Pristine Archiving**: Compiling Tauri bundles yields a `.dmg` and a `.app` package. To zip the `.app` package cleanly for macOS while preserving directory permissions, symlinks, and macOS resource forks, utilized the macOS native `ditto -c -k --sequesterRsrc --keepParent` command instead of standard `zip`.
+
+
