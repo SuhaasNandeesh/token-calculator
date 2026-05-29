@@ -26,3 +26,4 @@ dist-electron
 
 # Release artifacts
 /release
+/src-tauri/target
