@@ -118,9 +118,7 @@ function App() {
 
   // Set up global Tauri drag-and-drop/hover listener directly on the WebviewWindow
   useEffect(() => {
-    let unsubscribeDrop: (() => void) | null = null;
-    let unsubscribeHoverEnter: (() => void) | null = null;
-    let unsubscribeHoverLeave: (() => void) | null = null;
+    let unsubscribeDragDrop: (() => void) | null = null;
 
     // Prevent default browser behavior for drag-and-drop globally to avoid page navigation
     const preventDefault = (e: DragEvent) => e.preventDefault();
@@ -132,30 +130,26 @@ function App() {
         const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
         const appWindow = getCurrentWebviewWindow();
 
-        // 1. Listen for native file drops
-        unsubscribeDrop = await appWindow.listen<{ paths: string[] }>('tauri://drag-drop', async (event) => {
-          console.log("Tauri native drop event received:", event);
-          setIsDragging(false);
-          if (event.payload.paths && event.payload.paths.length > 0) {
-            await processPaths(event.payload.paths);
+        // Use the official Tauri v2 onDragDropEvent API for robust handling of file drops
+        unsubscribeDragDrop = await appWindow.onDragDropEvent(async (event) => {
+          console.log("Tauri drag-drop event received:", event);
+          const payload = event.payload;
+          
+          if (payload.type === 'enter') {
+            setIsDragging(true);
+          } else if (payload.type === 'leave') {
+            setIsDragging(false);
+          } else if (payload.type === 'drop') {
+            setIsDragging(false);
+            if (payload.paths && payload.paths.length > 0) {
+              await processPaths(payload.paths);
+            }
           }
         });
 
-        // 2. Listen for native drag enter
-        unsubscribeHoverEnter = await appWindow.listen('tauri://drag-enter', (event) => {
-          console.log("Tauri native drag enter event received:", event);
-          setIsDragging(true);
-        });
-
-        // 3. Listen for native drag leave
-        unsubscribeHoverLeave = await appWindow.listen('tauri://drag-leave', (event) => {
-          console.log("Tauri native drag leave event received:", event);
-          setIsDragging(false);
-        });
-
-        console.log("Tauri native drag-drop listeners registered successfully in App!");
+        console.log("Tauri native onDragDropEvent listener registered successfully in App!");
       } catch (err) {
-        console.error("Failed to register direct Tauri drag-drop listeners:", err);
+        console.error("Failed to register Tauri onDragDropEvent listener:", err);
       }
     };
 
@@ -164,9 +158,7 @@ function App() {
     return () => {
       window.removeEventListener('dragover', preventDefault);
       window.removeEventListener('drop', preventDefault);
-      if (unsubscribeDrop) unsubscribeDrop();
-      if (unsubscribeHoverEnter) unsubscribeHoverEnter();
-      if (unsubscribeHoverLeave) unsubscribeHoverLeave();
+      if (unsubscribeDragDrop) unsubscribeDragDrop();
     };
   }, [processPaths]);
 
@@ -371,9 +363,9 @@ function App() {
       {/* Spacious Aligned Header: Positioned beautifully below traffic lights */}
       <header className="px-6 py-4 flex items-center justify-between border-b border-neutral-900 bg-neutral-950/40 backdrop-blur-md z-40 flex-shrink-0">
         <div data-tauri-drag-region className="flex items-center space-x-2.5 flex-1 py-1 cursor-default">
-          <Calculator className="w-5.5 h-5.5 text-cyan-400" />
-          <h1 className="text-xs font-bold tracking-tight bg-gradient-to-r from-white to-neutral-100 bg-clip-text text-transparent flex items-center gap-1">
-            Token Calculator <Sparkles className="w-3 h-3 text-cyan-400/80" />
+          <Calculator data-tauri-drag-region className="w-5.5 h-5.5 text-cyan-400" />
+          <h1 data-tauri-drag-region className="text-xs font-bold tracking-tight bg-gradient-to-r from-white to-neutral-100 bg-clip-text text-transparent flex items-center gap-1">
+            Token Calculator <Sparkles data-tauri-drag-region className="w-3 h-3 text-cyan-400/80" />
           </h1>
         </div>
 

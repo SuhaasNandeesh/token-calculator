@@ -6,19 +6,14 @@ import App from './App';
 const mockCalculatePathTokens = vi.fn();
 const mockCalculatePathsTokensBulk = vi.fn(() => Promise.resolve({ totalTokens: 100, breakdown: [{ path: 'test-file.js', tokens: 100 }] }));
 
-let registeredHoverEnterCallback: ((event: { payload: unknown }) => void) | null = null;
-let registeredHoverLeaveCallback: ((event: { payload: unknown }) => void) | null = null;
+let registeredDragDropCallback: ((event: { payload: { type: string; paths?: string[] } }) => void) | null = null;
 
 vi.mock('@tauri-apps/api/webviewWindow', () => {
   return {
     getCurrentWebviewWindow: () => {
       return {
-        listen: vi.fn((eventName: string, callback: (event: { payload: unknown }) => void) => {
-          if (eventName === 'tauri://drag-enter') {
-            registeredHoverEnterCallback = callback;
-          } else if (eventName === 'tauri://drag-leave') {
-            registeredHoverLeaveCallback = callback;
-          }
+        onDragDropEvent: vi.fn((callback: (event: { payload: { type: string; paths?: string[] } }) => void) => {
+          registeredDragDropCallback = callback;
           return Promise.resolve(() => {});
         })
       };
@@ -30,8 +25,7 @@ beforeEach(() => {
   mockCalculatePathTokens.mockReset();
   mockCalculatePathsTokensBulk.mockReset();
   mockCalculatePathsTokensBulk.mockImplementation(() => Promise.resolve({ totalTokens: 100, breakdown: [{ path: 'test-file.js', tokens: 100 }] }));
-  registeredHoverEnterCallback = null;
-  registeredHoverLeaveCallback = null;
+  registeredDragDropCallback = null;
   const g = globalThis as unknown as { window?: { electronAPI?: unknown } };
   g.window = g.window || {};
   g.window.electronAPI = {
@@ -68,16 +62,16 @@ describe('App UI', () => {
     
     // Simulate Tauri native drag enter
     act(() => {
-      if (registeredHoverEnterCallback) {
-        registeredHoverEnterCallback({ payload: {} });
+      if (registeredDragDropCallback) {
+        registeredDragDropCallback({ payload: { type: 'enter' } });
       }
     });
     expect(dragOverlay.className).toContain('opacity-100');
     
     // Simulate Tauri native drag leave
     act(() => {
-      if (registeredHoverLeaveCallback) {
-        registeredHoverLeaveCallback({ payload: {} });
+      if (registeredDragDropCallback) {
+        registeredDragDropCallback({ payload: { type: 'leave' } });
       }
     });
     expect(dragOverlay.className).toContain('opacity-0');
