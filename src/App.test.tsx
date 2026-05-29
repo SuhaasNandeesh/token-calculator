@@ -6,13 +6,32 @@ import App from './App';
 const mockCalculatePathTokens = vi.fn();
 const mockCalculatePathsTokensBulk = vi.fn(() => Promise.resolve({ totalTokens: 100, breakdown: [{ path: 'test-file.js', tokens: 100 }] }));
 
-let registeredHoverCallback: ((isHovering: boolean) => void) | null = null;
+let registeredHoverEnterCallback: ((event: { payload: unknown }) => void) | null = null;
+let registeredHoverLeaveCallback: ((event: { payload: unknown }) => void) | null = null;
+
+vi.mock('@tauri-apps/api/webviewWindow', () => {
+  return {
+    getCurrentWebviewWindow: () => {
+      return {
+        listen: vi.fn((eventName: string, callback: (event: { payload: unknown }) => void) => {
+          if (eventName === 'tauri://drag-enter') {
+            registeredHoverEnterCallback = callback;
+          } else if (eventName === 'tauri://drag-leave') {
+            registeredHoverLeaveCallback = callback;
+          }
+          return Promise.resolve(() => {});
+        })
+      };
+    }
+  };
+});
 
 beforeEach(() => {
   mockCalculatePathTokens.mockReset();
   mockCalculatePathsTokensBulk.mockReset();
   mockCalculatePathsTokensBulk.mockImplementation(() => Promise.resolve({ totalTokens: 100, breakdown: [{ path: 'test-file.js', tokens: 100 }] }));
-  registeredHoverCallback = null;
+  registeredHoverEnterCallback = null;
+  registeredHoverLeaveCallback = null;
   const g = globalThis as unknown as { window?: { electronAPI?: unknown } };
   g.window = g.window || {};
   g.window.electronAPI = {
@@ -20,10 +39,7 @@ beforeEach(() => {
     calculatePathsTokensBulk: mockCalculatePathsTokensBulk,
     onScanProgress: vi.fn(),
     selectPaths: vi.fn(() => Promise.resolve([])),
-    onTauriHover: vi.fn((cb) => {
-      registeredHoverCallback = cb;
-      return () => { registeredHoverCallback = null; };
-    }),
+    onTauriHover: vi.fn(),
     onTauriDrop: vi.fn(),
   };
 });
@@ -39,23 +55,29 @@ describe('App UI', () => {
     expect(screen.getByText('Drag & Drop files or folders here')).toBeTruthy();
   });
 
-  it('updates UI on drag enter and leave', () => {
+  it('updates UI on drag enter and leave', async () => {
     render(<App />);
+    
+    // Wait for async effect to resolve dynamic imports
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
     const dragOverlay = screen.getByTestId('drag-overlay');
     expect(dragOverlay.className).toContain('opacity-0');
     
     // Simulate Tauri native drag enter
     act(() => {
-      if (registeredHoverCallback) {
-        registeredHoverCallback(true);
+      if (registeredHoverEnterCallback) {
+        registeredHoverEnterCallback({ payload: {} });
       }
     });
     expect(dragOverlay.className).toContain('opacity-100');
     
     // Simulate Tauri native drag leave
     act(() => {
-      if (registeredHoverCallback) {
-        registeredHoverCallback(false);
+      if (registeredHoverLeaveCallback) {
+        registeredHoverLeaveCallback({ payload: {} });
       }
     });
     expect(dragOverlay.className).toContain('opacity-0');

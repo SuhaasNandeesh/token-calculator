@@ -117,30 +117,52 @@ function App() {
     }
   }, [electron, activeEngine]);
 
-  // Set up global Tauri drag-and-drop/hover listener to bridge absolute paths into state
+  // Set up global Tauri drag-and-drop/hover listener directly on the WebviewWindow
   useEffect(() => {
-    if (electron && electron.onTauriDrop) {
-      const unsubscribeDrop = electron.onTauriDrop(async (paths: string[]) => {
-        setIsDragging(false);
-        dragCounter.current = 0;
-        if (paths && paths.length > 0) {
-          await processPaths(paths);
-        }
-      });
+    let unsubscribeDrop: (() => void) | null = null;
+    let unsubscribeHoverEnter: (() => void) | null = null;
+    let unsubscribeHoverLeave: (() => void) | null = null;
 
-      const unsubscribeHover = electron.onTauriHover((isHovering: boolean) => {
-        setIsDragging(isHovering);
-        if (!isHovering) {
-          dragCounter.current = 0;
-        }
-      });
+    const setupListeners = async () => {
+      try {
+        const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+        const appWindow = getCurrentWebviewWindow();
 
-      return () => {
-        unsubscribeDrop();
-        unsubscribeHover();
-      };
-    }
-  }, [electron, processPaths]);
+        // 1. Listen for native file drops
+        unsubscribeDrop = await appWindow.listen<{ paths: string[] }>('tauri://drag-drop', async (event) => {
+          console.log("Tauri native drop event received:", event);
+          setIsDragging(false);
+          if (event.payload.paths && event.payload.paths.length > 0) {
+            await processPaths(event.payload.paths);
+          }
+        });
+
+        // 2. Listen for native drag enter
+        unsubscribeHoverEnter = await appWindow.listen('tauri://drag-enter', (event) => {
+          console.log("Tauri native drag enter event received:", event);
+          setIsDragging(true);
+        });
+
+        // 3. Listen for native drag leave
+        unsubscribeHoverLeave = await appWindow.listen('tauri://drag-leave', (event) => {
+          console.log("Tauri native drag leave event received:", event);
+          setIsDragging(false);
+        });
+
+        console.log("Tauri native drag-drop listeners registered successfully in App!");
+      } catch (err) {
+        console.error("Failed to register direct Tauri drag-drop listeners:", err);
+      }
+    };
+
+    setupListeners();
+
+    return () => {
+      if (unsubscribeDrop) unsubscribeDrop();
+      if (unsubscribeHoverEnter) unsubscribeHoverEnter();
+      if (unsubscribeHoverLeave) unsubscribeHoverLeave();
+    };
+  }, [processPaths]);
 
   // Update tokens when engine changes
   const handleEngineChange = async (newEngine: string) => {
