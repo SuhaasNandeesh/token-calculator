@@ -5,8 +5,12 @@
 @layer base {
   body {
     @apply bg-neutral-900 text-neutral-100 antialiased h-screen overflow-hidden;
-    -webkit-app-region: drag; /* Allows dragging the window */
   }
+}
+
+/* Explicitly make elements with the Tauri drag attribute act as window drag handles */
+[data-tauri-drag-region] {
+  -webkit-app-region: drag;
 }
 
 /* Custom premium scrollbar style */
