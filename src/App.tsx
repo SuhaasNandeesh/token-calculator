@@ -78,6 +78,31 @@ function App() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Set up global Tauri drag-and-drop/hover listener to bridge absolute paths into state
+  useEffect(() => {
+    if (electron && electron.onTauriDrop) {
+      const unsubscribeDrop = electron.onTauriDrop(async (paths: string[]) => {
+        setIsDragging(false);
+        dragCounter.current = 0;
+        if (paths && paths.length > 0) {
+          await processPaths(paths);
+        }
+      });
+
+      const unsubscribeHover = electron.onTauriHover((isHovering: boolean) => {
+        setIsDragging(isHovering);
+        if (!isHovering) {
+          dragCounter.current = 0;
+        }
+      });
+
+      return () => {
+        unsubscribeDrop();
+        unsubscribeHover();
+      };
+    }
+  }, [electron, activeEngine, breakdown]);
+
   // Update tokens when engine changes
   const handleEngineChange = async (newEngine: string) => {
     setActiveEngine(newEngine);
@@ -208,6 +233,19 @@ function App() {
       }
     } else if (fileInputRef.current) {
       fileInputRef.current.click();
+    }
+  };
+
+  const triggerFolderSelector = async () => {
+    if (electron && electron.selectFolders) {
+      try {
+        const selected = await electron.selectFolders();
+        if (selected && selected.length > 0) {
+          await processPaths(selected);
+        }
+      } catch (err) {
+        console.error("Error opening folder dialog", err);
+      }
     }
   };
 
@@ -420,12 +458,18 @@ function App() {
                     Supports code, images, and nested structures recursively. 100% offline & secure.
                   </p>
                 </div>
-                <div className="pt-2">
+                <div className="pt-2 flex items-center space-x-3">
                   <button 
                     onClick={triggerFileSelector}
                     className="px-5 py-2 bg-gradient-to-tr from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 border border-cyan-400/20 active:scale-95 rounded-xl text-xs font-semibold text-white transition-all shadow-lg shadow-cyan-500/10 flex items-center gap-1.5"
                   >
-                    <FolderOpen className="w-3.5 h-3.5" /> Select Files or Folder
+                    <FolderOpen className="w-3.5 h-3.5" /> Select Files
+                  </button>
+                  <button 
+                    onClick={triggerFolderSelector}
+                    className="px-5 py-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 active:scale-95 rounded-xl text-xs font-semibold text-neutral-300 transition-all shadow-lg flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-cyan-400" /> Select Folder
                   </button>
                 </div>
               </div>
@@ -633,7 +677,14 @@ function App() {
                   className="px-2.5 py-1 bg-cyan-600/15 hover:bg-cyan-600/25 border border-cyan-500/20 rounded-lg text-[9px] font-extrabold text-cyan-400 active:scale-95 transition-all flex items-center gap-1 shadow-md shadow-cyan-500/2"
                   style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                 >
-                  <Plus className="w-2.5 h-2.5" /> Add items
+                  <Plus className="w-2.5 h-2.5" /> Add Files
+                </button>
+                <button 
+                  onClick={triggerFolderSelector}
+                  className="px-2.5 py-1 bg-neutral-905 hover:bg-neutral-850 border border-neutral-800 rounded-lg text-[9px] font-extrabold text-neutral-350 active:scale-95 transition-all flex items-center gap-1"
+                  style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+                >
+                  <FolderOpen className="w-2.5 h-2.5 text-cyan-400" /> Add Folder
                 </button>
                 <button 
                   onClick={clearAll}

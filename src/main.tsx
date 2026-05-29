@@ -6,6 +6,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 
 let lastDroppedPaths: string[] = [];
+let dropCallback: ((paths: string[]) => void) | null = null;
+let hoverCallback: ((isHovering: boolean) => void) | null = null;
 
 // Setup global drag-drop listener via Tauri native window event
 try {
@@ -13,10 +15,17 @@ try {
   appWindow.onDragDropEvent((event) => {
     if (event.payload.type === 'drop') {
       lastDroppedPaths = event.payload.paths;
-      
-      // Dispatch a mock standard browser drop event to trigger App.tsx drop zone callbacks automatically!
-      const mockEvent = new CustomEvent('drop');
-      window.dispatchEvent(mockEvent);
+      if (dropCallback) {
+        dropCallback(event.payload.paths);
+      }
+    } else if (event.payload.type === 'enter' || event.payload.type === 'over') {
+      if (hoverCallback) {
+        hoverCallback(true);
+      }
+    } else if (event.payload.type === 'leave') {
+      if (hoverCallback) {
+        hoverCallback(false);
+      }
     }
   });
 } catch (err) {
@@ -36,6 +45,21 @@ try {
   },
   selectPaths: async () => {
     return await invoke('select_paths');
+  },
+  selectFolders: async () => {
+    return await invoke('select_folders');
+  },
+  onTauriDrop: (callback: (paths: string[]) => void) => {
+    dropCallback = callback;
+    return () => {
+      dropCallback = null;
+    };
+  },
+  onTauriHover: (callback: (isHovering: boolean) => void) => {
+    hoverCallback = callback;
+    return () => {
+      hoverCallback = null;
+    };
   },
   getLastDroppedPaths: () => {
     const paths = [...lastDroppedPaths];

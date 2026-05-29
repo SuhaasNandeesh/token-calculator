@@ -157,10 +157,23 @@ fn calculate_paths_tokens_bulk(target_paths: Vec<String>, encoding: Option<Strin
 #[tauri::command]
 fn select_paths() -> Vec<String> {
     let files = FileDialog::new()
-        .set_title("Select Files or Folders")
+        .set_title("Select Files")
         .pick_files();
 
     if let Some(paths) = files {
+        return paths.into_iter().map(|p| p.to_string_lossy().into_owned()).collect();
+    }
+    
+    Vec::new()
+}
+
+#[tauri::command]
+fn select_folders() -> Vec<String> {
+    let folders = FileDialog::new()
+        .set_title("Select Folders")
+        .pick_folders();
+
+    if let Some(paths) = folders {
         return paths.into_iter().map(|p| p.to_string_lossy().into_owned()).collect();
     }
     
@@ -173,7 +186,8 @@ fn main() {
             calculate_text_tokens,
             calculate_path_tokens,
             calculate_paths_tokens_bulk,
-            select_paths
+            select_paths,
+            select_folders
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
