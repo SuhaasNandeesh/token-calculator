@@ -57,3 +57,15 @@ This document tracks all critical engineering insights, optimization strategies,
   - Configured `electron-builder` with custom output to `release/`.
   - Added `/release` to `.gitignore` to prevent committing massive packaged files (`.dmg` ~128MB, `.zip` ~124MB).
   - Pushed git tag `v0.0.1` and established a structured, repeatable automated/manual pipeline to publish releases to GitHub.
+
+---
+
+## 6. Framework Migration: Electron to Tauri v2 for 96% Size Reduction
+- **Context**: The bundled Electron application baseline size is over 114MB due to packaging Chromium and Node.js. For a simple offline tokenizer, this was computationally and structurally bloated.
+- **Resolution**:
+  - Migrated to **Tauri v2** using macOS's native WebKit engine.
+  - Rewrote the directory crawler and BPE tokenizing logic in highly optimized **Rust** using `tiktoken-rs` and `walkdir` (zero-cloning with lock-based singleton mutexes).
+  - Shrinked the DMG installer size from **114.1 MB** down to **4.8 MB** (a ~96% reduction!).
+  - Exposed a mock `electronAPI` window object in `src/main.tsx` that mapped original React IPC calls directly to Tauri's `invoke` API, allowing the entire React frontend to compile and run with **zero code modifications**!
+  - Resolved `dispatch2` dependency bitflags compilation limit reached error by adding `#![recursion_limit = "512"]` inside `main.rs` and the cached dependency files.
+
