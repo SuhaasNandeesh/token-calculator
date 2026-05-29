@@ -32,8 +32,19 @@ try {
   console.error("Failed to register Tauri native drag-drop event", err);
 }
 
+interface ElectronAPI {
+  calculateTextTokens: (text: string, encoding?: string) => Promise<number>;
+  calculatePathTokens: (targetPath: string, encoding?: string) => Promise<number>;
+  calculatePathsTokensBulk: (targetPaths: string[], encoding?: string) => Promise<unknown>;
+  selectPaths: () => Promise<string[]>;
+  selectFolders: () => Promise<string[]>;
+  onTauriDrop: (callback: (paths: string[]) => void) => () => void;
+  onTauriHover: (callback: (isHovering: boolean) => void) => () => void;
+  getLastDroppedPaths: () => string[];
+}
+
 // Expose the mock electronAPI bridge to Tauri v2 backend commands
-(window as any).electronAPI = {
+(window as unknown as { electronAPI: ElectronAPI }).electronAPI = {
   calculateTextTokens: async (text: string, encoding?: string) => {
     return await invoke('calculate_text_tokens', { text, encoding });
   },

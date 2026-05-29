@@ -10,8 +10,9 @@ beforeEach(() => {
   mockCalculatePathTokens.mockReset();
   mockCalculatePathsTokensBulk.mockReset();
   mockCalculatePathsTokensBulk.mockImplementation(() => Promise.resolve({ totalTokens: 100, breakdown: [{ path: 'test-file.js', tokens: 100 }] }));
-  (globalThis as any).window = (globalThis as any).window || {};
-  (globalThis as any).window.electronAPI = {
+  const g = globalThis as unknown as { window?: { electronAPI?: unknown } };
+  g.window = g.window || {};
+  g.window.electronAPI = {
     calculatePathTokens: mockCalculatePathTokens,
     calculatePathsTokensBulk: mockCalculatePathsTokensBulk,
     onScanProgress: vi.fn(),

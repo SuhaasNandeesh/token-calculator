@@ -24,6 +24,17 @@ interface BreakdownItem {
   tokens: number;
 }
 
+interface ElectronAPI {
+  calculateTextTokens: (text: string, encoding?: string) => Promise<number>;
+  calculatePathTokens: (targetPath: string, encoding?: string) => Promise<number>;
+  calculatePathsTokensBulk: (targetPaths: string[], encoding?: string) => Promise<{ breakdown: BreakdownItem[]; totalTokens: number }>;
+  selectPaths: () => Promise<string[]>;
+  selectFolders: () => Promise<string[]>;
+  onTauriDrop: (callback: (paths: string[]) => void) => () => void;
+  onTauriHover: (callback: (isHovering: boolean) => void) => () => void;
+  getLastDroppedPaths: () => string[];
+}
+
 const ENGINE_DETAILS = {
   'o200k_base': { name: 'GPT-4o (o200k_base)', desc: 'Latest high-efficiency tokenizer for GPT-4o models' },
   'cl100k_base': { name: 'GPT-4 / GPT-3.5 (cl100k_base)', desc: 'Standard tokenizer for GPT-4, GPT-3.5-turbo' },
@@ -45,7 +56,7 @@ function App() {
   const dragCounter = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const electron = (window as any).electronAPI;
+  const electron = (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
 
   const formatPath = useCallback((filePath: string) => {
     let displayPath = filePath;
@@ -78,6 +89,34 @@ function App() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Process dropped/selected files cumulatively
+  const processPaths = useCallback(async (paths: string[]) => {
+    if (!electron) {
+      alert("Electron API not available");
+      return;
+    }
+    setLoading(true);
+    try {
+      const result = await electron.calculatePathsTokensBulk(paths, activeEngine);
+      const newBreakdown = result.breakdown;
+
+      setBreakdown(prev => {
+        const map = new Map<string, number>();
+        prev.forEach((item: BreakdownItem) => map.set(item.path, item.tokens));
+        newBreakdown.forEach((item: BreakdownItem) => map.set(item.path, item.tokens));
+        
+        const updated = Array.from(map.entries()).map(([path, tokens]) => ({ path, tokens }));
+        setTotalTokens(updated.reduce((sum, item) => sum + item.tokens, 0));
+        return updated;
+      });
+    } catch (error) {
+      console.error("Failed to process paths", error);
+      alert("An error occurred during calculation");
+    } finally {
+      setLoading(false);
+    }
+  }, [electron, activeEngine]);
+
   // Set up global Tauri drag-and-drop/hover listener to bridge absolute paths into state
   useEffect(() => {
     if (electron && electron.onTauriDrop) {
@@ -101,13 +140,14 @@ function App() {
         unsubscribeHover();
       };
     }
-  }, [electron, activeEngine, breakdown]);
+  }, [electron, processPaths]);
 
   // Update tokens when engine changes
   const handleEngineChange = async (newEngine: string) => {
     setActiveEngine(newEngine);
     setIsSelectOpen(false);
     if (breakdown.length === 0) return;
+    if (!electron) return;
 
     setLoading(true);
     try {
@@ -140,34 +180,6 @@ function App() {
     e.preventDefault();
   }, []);
 
-  // Process dropped/selected files cumulatively
-  const processPaths = async (paths: string[]) => {
-    if (!electron) {
-      alert("Electron API not available");
-      return;
-    }
-    setLoading(true);
-    try {
-      const result = await electron.calculatePathsTokensBulk(paths, activeEngine);
-      const newBreakdown = result.breakdown;
-
-      setBreakdown(prev => {
-        const map = new Map<string, number>();
-        prev.forEach((item: BreakdownItem) => map.set(item.path, item.tokens));
-        newBreakdown.forEach((item: BreakdownItem) => map.set(item.path, item.tokens));
-        
-        const updated = Array.from(map.entries()).map(([path, tokens]) => ({ path, tokens }));
-        setTotalTokens(updated.reduce((sum, item) => sum + item.tokens, 0));
-        return updated;
-      });
-    } catch (error) {
-      console.error("Failed to process paths", error);
-      alert("An error occurred during calculation");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
@@ -185,17 +197,17 @@ function App() {
     // Fallback: Access nativeEvent to preserve Electron's absolute path property on File objects
     const dt = e.nativeEvent.dataTransfer || e.dataTransfer;
     const files = Array.from(dt.files || []);
-    const paths = files.map(f => (f as any).path || f.name).filter(Boolean);
+    const paths = files.map(f => (f as unknown as { path?: string }).path || f.name).filter(Boolean);
     
     if (paths.length > 0) {
       await processPaths(paths);
     }
-  }, [electron, activeEngine, breakdown]);
+  }, [electron, processPaths]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
     const files = Array.from(e.target.files);
-    const paths = files.map(f => (f as any).path || f.name).filter(Boolean);
+    const paths = files.map(f => (f as unknown as { path?: string }).path || f.name).filter(Boolean);
     if (paths.length > 0) {
       await processPaths(paths);
     }
