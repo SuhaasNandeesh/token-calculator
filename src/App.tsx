@@ -678,10 +678,7 @@ function App() {
       </main>
 
       {/* Global application footer */}
-      <footer className="px-6 py-3 border-t border-neutral-900 bg-neutral-950/60 backdrop-blur-md text-[10px] text-neutral-500 flex justify-between items-center z-10 flex-shrink-0">
-        <span className="flex items-center gap-1">
-          Global copy-tokenize shortcut: <kbd className="font-mono bg-neutral-900 px-1.5 py-0.5 rounded border border-neutral-850 text-neutral-400 font-bold select-text">Cmd+Opt+T</kbd>
-        </span>
+      <footer className="px-6 py-3 border-t border-neutral-900 bg-neutral-950/60 backdrop-blur-md text-[10px] text-neutral-500 flex justify-end items-center z-10 flex-shrink-0">
         <span className="flex items-center gap-1">
           <HelpCircle className="w-3 h-3 text-neutral-500" /> Offline Token Estimator
         </span>
