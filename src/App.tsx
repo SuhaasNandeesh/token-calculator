@@ -33,6 +33,7 @@ interface ElectronAPI {
   onTauriDrop: (callback: (paths: string[]) => void) => () => void;
   onTauriHover: (callback: (isHovering: boolean) => void) => () => void;
   getLastDroppedPaths: () => string[];
+  cancelCalculation: () => Promise<void>;
 }
 
 const ENGINE_DETAILS = {
@@ -52,6 +53,7 @@ function App() {
   const [sortOrder, setSortOrder] = useState<'name' | 'tokens' | 'none'>('none');
   const [isSelectOpen, setIsSelectOpen] = useState(false);
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
+  const [scanProgress, setScanProgress] = useState<{ processed: number; total: number; currentFile: string; active: boolean } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -96,7 +98,7 @@ function App() {
     }
     setLoading(true);
     try {
-      const result = await electron.calculatePathsTokensBulk(paths, activeEngine);
+      const result = (await electron.calculatePathsTokensBulk(paths, activeEngine)) as { breakdown: BreakdownItem[]; totalTokens: number };
       const newBreakdown = result.breakdown;
 
       setBreakdown(prev => {
@@ -110,15 +112,29 @@ function App() {
       });
     } catch (error) {
       console.error("Failed to process paths", error);
-      alert("An error occurred during calculation");
+      if (error !== "Scan cancelled by user") {
+        alert("An error occurred during calculation");
+      }
     } finally {
       setLoading(false);
+      setScanProgress(null);
     }
   }, [electron, activeEngine]);
+
+  const handleCancelScan = useCallback(async () => {
+    if (electron && electron.cancelCalculation) {
+      try {
+        await electron.cancelCalculation();
+      } catch (err) {
+        console.error("Failed to cancel scan:", err);
+      }
+    }
+  }, [electron]);
 
   // Set up global Tauri drag-and-drop/hover listener directly on the WebviewWindow
   useEffect(() => {
     let unsubscribeDragDrop: (() => void) | null = null;
+    let unsubscribeProgress: (() => void) | null = null;
 
     // Prevent default browser behavior for drag-and-drop globally to avoid page navigation
     const preventDefault = (e: DragEvent) => e.preventDefault();
@@ -147,9 +163,23 @@ function App() {
           }
         });
 
-        console.log("Tauri native onDragDropEvent listener registered successfully in App!");
+        // Listen to progress events streamed from background threaded tokenizer
+        unsubscribeProgress = await appWindow.listen<{
+          processed: number;
+          total: number;
+          currentFile: string;
+        }>("scan-progress", (event) => {
+          setScanProgress({
+            processed: event.payload.processed,
+            total: event.payload.total,
+            currentFile: event.payload.currentFile,
+            active: true
+          });
+        });
+
+        console.log("Tauri native event listeners registered successfully in App!");
       } catch (err) {
-        console.error("Failed to register Tauri onDragDropEvent listener:", err);
+        console.error("Failed to register Tauri event listeners:", err);
       }
     };
 
@@ -159,6 +189,7 @@ function App() {
       window.removeEventListener('dragover', preventDefault);
       window.removeEventListener('drop', preventDefault);
       if (unsubscribeDragDrop) unsubscribeDragDrop();
+      if (unsubscribeProgress) unsubscribeProgress();
     };
   }, [processPaths]);
 
@@ -331,6 +362,63 @@ function App() {
     <div 
       className="flex flex-col h-screen bg-neutral-950 text-neutral-100 font-sans relative overflow-hidden select-none" 
     >
+      {/* Premium Glassmorphic Scan Progress Overlay */}
+      {scanProgress && scanProgress.active && (
+        <div className="absolute inset-0 bg-neutral-950/80 backdrop-blur-lg z-50 flex flex-col items-center justify-center p-6 animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-neutral-900/60 border border-neutral-800 rounded-2xl p-6 shadow-2xl space-y-5 animate-in zoom-in-95 duration-200 backdrop-blur-md">
+            
+            {/* Spinning Loader & Title */}
+            <div className="flex items-center space-x-4">
+              <div className="p-3 bg-cyan-950/40 rounded-full border border-cyan-800/40 relative flex-shrink-0">
+                <div className="absolute inset-0 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
+                <Calculator className="w-6 h-6 text-cyan-400" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-sm font-bold text-neutral-100 uppercase tracking-wider">Analyzing Directory</h3>
+                <p className="text-[10px] text-neutral-500 font-medium tracking-wide mt-0.5 uppercase">Recursive Token calculation in progress</p>
+              </div>
+            </div>
+
+            {/* Progress Percentage & Stats */}
+            <div className="space-y-2">
+              <div className="flex justify-between items-end text-xs font-mono font-bold select-none">
+                <span className="text-cyan-400">
+                  {Math.round((scanProgress.processed / scanProgress.total) * 100)}% Complete
+                </span>
+                <span className="text-neutral-400 text-[10px]">
+                  {formatNumber(scanProgress.processed)} / {formatNumber(scanProgress.total)} Files
+                </span>
+              </div>
+
+              {/* Progress Bar Container */}
+              <div className="h-2.5 w-full bg-neutral-950 rounded-full overflow-hidden border border-neutral-850 p-0.5">
+                <div 
+                  style={{ width: `${(scanProgress.processed / scanProgress.total) * 100}%` }}
+                  className="h-full bg-gradient-to-r from-cyan-500 to-teal-400 rounded-full shadow-[0_0_8px_rgba(6,182,212,0.4)] transition-all duration-300 ease-out"
+                />
+              </div>
+            </div>
+
+            {/* Dynamic File Path Ticker */}
+            <div className="p-3 bg-neutral-950/60 border border-neutral-850 rounded-xl min-h-[48px] flex items-center">
+              <p className="text-[10px] font-mono text-neutral-400 break-all select-text line-clamp-2 leading-relaxed">
+                <span className="text-neutral-600 font-bold uppercase mr-1.5 tracking-wider">Active:</span>
+                {formatPath(scanProgress.currentFile).displayPath}
+              </p>
+            </div>
+
+            {/* Cancel Button */}
+            <button
+              onClick={handleCancelScan}
+              className="w-full py-2.5 bg-neutral-950 border border-neutral-850 hover:bg-red-950/20 hover:border-red-900/40 hover:text-red-400 rounded-xl text-xs font-bold text-neutral-400 transition-all duration-200 active:scale-98 cursor-pointer select-none"
+            >
+              Cancel Calculation
+            </button>
+
+          </div>
+        </div>
+      )}
+
       {/* Immersive Drag Overlay (Always in DOM, opacity-toggled) */}
       <div 
         data-testid="drag-overlay"

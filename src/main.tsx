@@ -13,6 +13,7 @@ interface ElectronAPI {
   onTauriDrop: (callback: (paths: string[]) => void) => () => void;
   onTauriHover: (callback: (isHovering: boolean) => void) => () => void;
   getLastDroppedPaths: () => string[];
+  cancelCalculation: () => Promise<void>;
 }
 
 // Expose the mock electronAPI bridge to Tauri v2 backend commands
@@ -40,6 +41,9 @@ interface ElectronAPI {
   },
   getLastDroppedPaths: () => {
     return [];
+  },
+  cancelCalculation: async () => {
+    return await invoke('cancel_calculation');
   }
 };
 

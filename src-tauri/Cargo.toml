@@ -1,6 +1,6 @@
 [package]
 name = "token-calculator"
-version = "0.0.4"
+version = "0.0.5"
 description = "High-Performance Local Token Calculator"
 authors = ["Suhaas Nandeesh <suhaasnandeesh@gmail.com>"]
 edition = "2021"

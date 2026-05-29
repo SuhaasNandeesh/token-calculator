@@ -15,7 +15,8 @@ vi.mock('@tauri-apps/api/webviewWindow', () => {
         onDragDropEvent: vi.fn((callback: (event: { payload: { type: string; paths?: string[] } }) => void) => {
           registeredDragDropCallback = callback;
           return Promise.resolve(() => {});
-        })
+        }),
+        listen: vi.fn(() => Promise.resolve(() => {}))
       };
     }
   };

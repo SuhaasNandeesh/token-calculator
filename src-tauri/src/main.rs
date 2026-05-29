@@ -9,6 +9,11 @@ use walkdir::WalkDir;
 use tiktoken_rs::{o200k_base_singleton, cl100k_base_singleton, p50k_base_singleton, r50k_base_singleton};
 use serde::Serialize;
 use rfd::FileDialog;
+use tauri::Emitter;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::LazyLock;
+
+static CANCEL_FLAG: LazyLock<AtomicBool> = LazyLock::new(|| AtomicBool::new(false));
 
 #[derive(Serialize)]
 struct BreakdownItem {
@@ -113,38 +118,100 @@ fn calculate_path_tokens(target_path: String, encoding: Option<String>) -> Resul
     Ok(total)
 }
 
+#[derive(Clone, Serialize)]
+struct ProgressPayload {
+    processed: usize,
+    total: usize,
+    #[serde(rename = "currentFile")]
+    current_file: String,
+    #[serde(rename = "currentTokens")]
+    current_tokens: usize,
+}
+
 #[tauri::command]
-fn calculate_paths_tokens_bulk(target_paths: Vec<String>, encoding: Option<String>) -> Result<BulkResult, String> {
+fn cancel_calculation() {
+    CANCEL_FLAG.store(true, Ordering::Relaxed);
+}
+
+#[tauri::command]
+async fn calculate_paths_tokens_bulk(
+    window: tauri::Window,
+    target_paths: Vec<String>,
+    encoding: Option<String>
+) -> Result<BulkResult, String> {
     let enc_name = encoding.unwrap_or_else(|| "o200k_base".to_string());
     
-    let mut breakdown = Vec::new();
-    let mut total_tokens = 0;
+    // Reset cancellation flag
+    CANCEL_FLAG.store(false, Ordering::Relaxed);
 
-    for tp in target_paths {
-        let path = Path::new(&tp);
+    // Initialize path token map for bulk aggregation
+    let mut path_tokens_map = std::collections::HashMap::new();
+    for tp in &target_paths {
+        path_tokens_map.insert(tp.clone(), 0);
+    }
+
+    // Phase 1: Fast pre-scan discovery of candidate files
+    let mut all_files = Vec::new();
+    for tp in &target_paths {
+        let path = Path::new(tp);
         if !path.exists() {
             continue;
         }
 
-        let mut path_tokens = 0;
         if path.is_file() {
-            path_tokens = count_file_tokens(path, &enc_name);
+            all_files.push((tp.clone(), path.to_path_buf()));
         } else {
             let walker = WalkDir::new(path).into_iter().filter_entry(|e| !should_ignore(e.path()));
             for entry in walker {
                 if let Ok(entry) = entry {
                     let p = entry.path();
                     if p.is_file() {
-                        path_tokens += count_file_tokens(p, &enc_name);
+                        all_files.push((tp.clone(), p.to_path_buf()));
                     }
                 }
             }
         }
+    }
 
-        total_tokens += path_tokens;
+    let total_files = all_files.len();
+    let mut total_tokens = 0;
+
+    // Phase 2: Non-blocking token calculations with progress feedback
+    for (idx, (root_path, file_path)) in all_files.iter().enumerate() {
+        // Check for cancellation signal
+        if CANCEL_FLAG.load(Ordering::Relaxed) {
+            return Err("Scan cancelled by user".into());
+        }
+
+        let file_tokens = count_file_tokens(file_path, &enc_name);
+        total_tokens += file_tokens;
+
+        if let Some(tokens) = path_tokens_map.get_mut(root_path) {
+            *tokens += file_tokens;
+        }
+
+        // Optimized Emitter: Stream progress periodically to avoid IPC channel flooding
+        let is_last = idx == total_files - 1;
+        let should_emit = is_last || (idx + 1) % (total_files / 100).max(1) == 0;
+        
+        if should_emit {
+            let progress = ProgressPayload {
+                processed: idx + 1,
+                total: total_files,
+                current_file: file_path.to_string_lossy().into_owned(),
+                current_tokens: total_tokens,
+            };
+            window.emit("scan-progress", progress).ok();
+        }
+    }
+
+    // Assemble final breakdown result matching the original frontend API
+    let mut breakdown = Vec::new();
+    for tp in target_paths {
+        let tokens = *path_tokens_map.get(&tp).unwrap_or(&0);
         breakdown.push(BreakdownItem {
             path: tp,
-            tokens: path_tokens,
+            tokens,
         });
     }
 
@@ -187,7 +254,8 @@ fn main() {
             calculate_path_tokens,
             calculate_paths_tokens_bulk,
             select_paths,
-            select_folders
+            select_folders,
+            cancel_calculation
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
