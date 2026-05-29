@@ -74,9 +74,10 @@ This document tracks all critical engineering insights, optimization strategies,
 ## 7. Tauri v2 Native Event Interception & Drag-and-Drop Resolution
 - **Context**: In Tauri v2, when `dragDropEnabled` is `true` (default), Tauri's native layer intercepts all window drop events. This bypasses HTML5 DOM-level drag-and-drop events (like React's `onDrop`), rendering elements unresponsive.
 - **Resolution**:
-  - Registered a native event stream at the top level of `src/main.tsx` using `webviewWindow.onDragDropEvent`.
-  - Created a transparent observer bridge with `onTauriDrop` and `onTauriHover` to bubble absolute file path arrays directly into React states.
-  - Wrapped frontend handlers (like `processPaths` and `handleDrop`) in `useCallback` to guarantee stable memory references, and set up a tightly scoped `useEffect` dependency list (`[electron, processPaths]`). This prevents React from repeatedly unsubscribing and re-subscribing the native window-drop listener when the files list (`breakdown`) or other states mutate, resolving all drop freezes.
+  - **Window Scope Constraint**: In Tauri v2, native drag-and-drop events (`tauri://drag-drop`, `tauri://drag-enter`, `tauri://drag-leave`) are targeted *specifically* at the window webview and are not emitted globally. Standard global `listen(...)` calls from `@tauri-apps/api/event` may fail to capture them.
+  - **Direct Listener Registry**: Shifted the listeners directly inside the React component mount phase (`useEffect`) in `App.tsx` by performing a dynamic import of `@tauri-apps/api/webviewWindow` and calling `getCurrentWebviewWindow().listen(...)` on the active window. This completely avoids any pre-load/module loading race conditions.
+  - **Conflict Avoidance**: HTML5 drag enter/leave handlers in React are simplified to only run `e.preventDefault()`, leaving the `isDragging` overlay state to be controlled purely by Tauri's native window events.
+  - **Config Override**: Explicitly declared `"dragDropEnabled": true` and `"label": "main"` inside `tauri.conf.json`'s window parameters to ensure the OS-level drag-drop delegate is compiled and bound correctly on macOS.
 
 ---
 
@@ -93,4 +94,11 @@ This document tracks all critical engineering insights, optimization strategies,
 - **Resolution**:
   - Replaced all raw `any` assertions with a strongly typed `ElectronAPI` interface mapping inside both `src/App.tsx` and `src/main.tsx`.
   - Cast environment globals safely via `unknown` checks, resulting in a **100% warning-free and error-free TypeScript compile and lint check**.
+
+---
+
+## 10. Stray Mount Volume Build Errors (`bundle_dmg.sh` failure)
+- **Context**: If a previous compilation is interrupted or if the generated DMG is still mounted on the macOS host under `/Volumes/`, subsequent Tauri compilations will crash during the `bundle_dmg.sh` phase due to mount collisions.
+- **Resolution**:
+  - Cleaned up active disk mounts using macOS native `hdiutil detach "/Volumes/Token Calculator"` (and variants), restoring a completely clean mount list and enabling pristine compilations.
 
