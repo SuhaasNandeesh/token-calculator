@@ -115,6 +115,7 @@ The frontend interacts with the Rust backend through the following registered Ta
 | `calculate_path_tokens` | `(target_path, encoding)` | `number` | Walks a single file or directory recursively in Rust and counts tokens. |
 | `calculate_paths_tokens_bulk` | `(target_paths[], encoding)`| `{ totalTokens, breakdown }` | Evaluates multiple paths concurrently. |
 | `select_paths` | *None* | `string[]` | Displays the native system file picker using the `rfd` crate. |
+| `select_folders` | *None* | `string[]` | Displays the native system folder picker using the `rfd` crate. |
 
 ---
 

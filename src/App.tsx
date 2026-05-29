@@ -53,7 +53,6 @@ function App() {
   const [isSelectOpen, setIsSelectOpen] = useState(false);
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
 
-  const dragCounter = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const electron = (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
@@ -123,6 +122,11 @@ function App() {
     let unsubscribeHoverEnter: (() => void) | null = null;
     let unsubscribeHoverLeave: (() => void) | null = null;
 
+    // Prevent default browser behavior for drag-and-drop globally to avoid page navigation
+    const preventDefault = (e: DragEvent) => e.preventDefault();
+    window.addEventListener('dragover', preventDefault);
+    window.addEventListener('drop', preventDefault);
+
     const setupListeners = async () => {
       try {
         const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
@@ -158,6 +162,8 @@ function App() {
     setupListeners();
 
     return () => {
+      window.removeEventListener('dragover', preventDefault);
+      window.removeEventListener('drop', preventDefault);
       if (unsubscribeDrop) unsubscribeDrop();
       if (unsubscribeHoverEnter) unsubscribeHoverEnter();
       if (unsubscribeHoverLeave) unsubscribeHoverLeave();
@@ -184,41 +190,7 @@ function App() {
     }
   };
 
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-  }, []);
 
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-  }, []);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-  }, []);
-
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    dragCounter.current = 0;
-    
-    // Retrieve absolute paths intercepted by the preload script during drop capture
-    if (electron && electron.getLastDroppedPaths) {
-      const paths = electron.getLastDroppedPaths();
-      if (paths && paths.length > 0) {
-        await processPaths(paths);
-        return;
-      }
-    }
-
-    // Fallback: Access nativeEvent to preserve Electron's absolute path property on File objects
-    const dt = e.nativeEvent.dataTransfer || e.dataTransfer;
-    const files = Array.from(dt.files || []);
-    const paths = files.map(f => (f as unknown as { path?: string }).path || f.name).filter(Boolean);
-    
-    if (paths.length > 0) {
-      await processPaths(paths);
-    }
-  }, [electron, processPaths]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
@@ -366,11 +338,6 @@ function App() {
   return (
     <div 
       className="flex flex-col h-screen bg-neutral-950 text-neutral-100 font-sans relative overflow-hidden select-none" 
-      style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-      onDragEnter={handleDragEnter}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
     >
       {/* Immersive Drag Overlay (Always in DOM, opacity-toggled) */}
       <div 
@@ -399,11 +366,11 @@ function App() {
         className="hidden" 
       />
       {/* macOS Traffic Lights Spacer */}
-      <div className="h-9 flex-shrink-0 bg-neutral-950/40 w-full" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />
+      <div data-tauri-drag-region className="h-9 flex-shrink-0 bg-neutral-950/40 w-full" />
 
       {/* Spacious Aligned Header: Positioned beautifully below traffic lights */}
       <header className="px-6 py-4 flex items-center justify-between border-b border-neutral-900 bg-neutral-950/40 backdrop-blur-md z-40 flex-shrink-0">
-        <div className="flex items-center space-x-2.5">
+        <div data-tauri-drag-region className="flex items-center space-x-2.5 flex-1 py-1 cursor-default">
           <Calculator className="w-5.5 h-5.5 text-cyan-400" />
           <h1 className="text-xs font-bold tracking-tight bg-gradient-to-r from-white to-neutral-100 bg-clip-text text-transparent flex items-center gap-1">
             Token Calculator <Sparkles className="w-3 h-3 text-cyan-400/80" />
@@ -411,10 +378,9 @@ function App() {
         </div>
 
         {/* Custom Engine Dropdown Menu (Click-transparent, solid styling) */}
-        <div className="relative flex-shrink-0 z-50" ref={dropdownRef} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        <div className="relative flex-shrink-0 z-50" ref={dropdownRef}>
           <button
             onClick={() => setIsSelectOpen(prev => !prev)}
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             className="flex items-center space-x-2 px-3 py-1.5 bg-neutral-900 border border-neutral-800 rounded-lg hover:border-neutral-700 hover:bg-neutral-855 active:scale-95 transition-all text-xs font-semibold text-neutral-300 shadow-md select-none animate-fade-in"
           >
             <span className="font-mono text-cyan-400 font-bold uppercase tracking-wide">{activeEngine}</span>
@@ -424,7 +390,6 @@ function App() {
           {isSelectOpen && (
             <div 
               className="absolute right-0 mt-2 w-72 bg-neutral-950 border border-neutral-850 rounded-xl shadow-2xl p-2 animate-in fade-in slide-in-from-top-2 duration-150"
-              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             >
               <div className="text-[9px] font-extrabold text-neutral-500 px-3 py-2 uppercase tracking-wider select-none border-b border-neutral-900/60 pb-1.5 mb-1.5">
                 Select Tokenization Engine
@@ -434,7 +399,6 @@ function App() {
                   <button
                     key={key}
                     onClick={() => handleEngineChange(key)}
-                    style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                     className={`w-full text-left px-3 py-2 rounded-lg transition-all flex flex-col ${
                       activeEngine === key 
                         ? 'bg-cyan-500/10 border border-cyan-500/30' 
@@ -462,7 +426,6 @@ function App() {
           <div 
             data-testid="dropzone"
             className="flex-1 rounded-2xl border-2 border-dashed border-neutral-800 bg-neutral-900/20 hover:border-neutral-700 hover:bg-neutral-900/35 transition-all duration-300 flex flex-col items-center justify-center p-8 text-center"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           >
             {loading ? (
               <div className="flex flex-col items-center space-y-4 animate-pulse">
@@ -476,7 +439,7 @@ function App() {
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col items-center space-y-5 max-w-md" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+              <div className="flex flex-col items-center space-y-5 max-w-md">
                 <div className="p-4 bg-neutral-900/90 rounded-2xl border border-neutral-800 shadow-md">
                   <UploadCloud className="w-8 h-8 text-neutral-400 animate-bounce" />
                 </div>
@@ -507,7 +470,6 @@ function App() {
           /* Premium Focused Spacious Dashboard Layout (Completely Realignment-proof vertical flexbox) */
           <div 
             className="flex-1 flex flex-col justify-between rounded-2xl border border-neutral-900 bg-neutral-950/20 p-5 shadow-2xl relative min-h-0 gap-4" 
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           >
             
             {/* Top Section: Compact Total Tokens Indicator & Telemetry */}
@@ -656,7 +618,6 @@ function App() {
                                 onClick={() => handleCopy(item.path)}
                                 className="p-1 text-neutral-500 hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
                                 title="Copy absolute path"
-                                style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                               >
                                 {copiedPath === item.path ? (
                                   <CheckCircle className="w-3.5 h-3.5 text-green-400 animate-in zoom-in-50 duration-200" />
@@ -670,7 +631,6 @@ function App() {
                                 onClick={() => removeFile(item.path)}
                                 className="p-1 text-neutral-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
                                 title="Remove file"
-                                style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -703,21 +663,18 @@ function App() {
                 <button 
                   onClick={triggerFileSelector}
                   className="px-2.5 py-1 bg-cyan-600/15 hover:bg-cyan-600/25 border border-cyan-500/20 rounded-lg text-[9px] font-extrabold text-cyan-400 active:scale-95 transition-all flex items-center gap-1 shadow-md shadow-cyan-500/2"
-                  style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                 >
                   <Plus className="w-2.5 h-2.5" /> Add Files
                 </button>
                 <button 
                   onClick={triggerFolderSelector}
                   className="px-2.5 py-1 bg-cyan-600/15 hover:bg-cyan-600/25 border border-cyan-500/20 rounded-lg text-[9px] font-extrabold text-cyan-400 active:scale-95 transition-all flex items-center gap-1 shadow-md shadow-cyan-500/2"
-                  style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                 >
                   <FolderOpen className="w-2.5 h-2.5" /> Add Folder
                 </button>
                 <button 
                   onClick={clearAll}
                   className="px-2.5 py-1 bg-neutral-950 border border-neutral-850 hover:bg-neutral-900 rounded-lg text-[9px] font-extrabold text-neutral-400 hover:text-neutral-255 transition-all flex items-center gap-1"
-                  style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
                 >
                   <X className="w-2.5 h-2.5" /> Clear All
                 </button>
