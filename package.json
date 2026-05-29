@@ -50,6 +50,8 @@
   "build": {
     "appId": "com.suhaasnandeesh.token-calculator",
     "productName": "Token Calculator",
+    "asar": true,
+    "compression": "maximum",
     "directories": {
       "output": "release"
     },

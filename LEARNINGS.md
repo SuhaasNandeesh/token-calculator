@@ -48,3 +48,12 @@ This document tracks all critical engineering insights, optimization strategies,
   - Implemented glassmorphic recalculating loaders over the checklist area, giving immediate visual status.
   - Added a workspace formatting utility in `App.tsx` mapping absolute path prefixes to `~`, bolding active filenames, and rendering relative paths.
   - Added slide-in entries with dynamic cascade delays to provide premium kinetic feedback.
+
+---
+
+## 5. Electron-Builder Packaging & GitHub Release Setup
+- **Context**: Creating production-ready installers for Vite-based Electron applications requires configuring `electron-builder` correctly inside `package.json` to avoid packaging native module bloat and ensuring built assets are ignored by Git.
+- **Resolution**:
+  - Configured `electron-builder` with custom output to `release/`.
+  - Added `/release` to `.gitignore` to prevent committing massive packaged files (`.dmg` ~128MB, `.zip` ~124MB).
+  - Pushed git tag `v0.0.1` and established a structured, repeatable automated/manual pipeline to publish releases to GitHub.
