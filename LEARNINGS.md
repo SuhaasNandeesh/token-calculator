@@ -111,4 +111,14 @@ This document tracks all critical engineering insights, optimization strategies,
   - **Drag-and-Drop Race Avoidance**: Stripped React/HTML5 `onDrop` and `onDragEnter/Leave/Over` handlers from JSX components. Added a simple global window `dragover` and `drop` event listener in `useEffect` that calls `e.preventDefault()`, allowing Tauri's native event listeners to receive absolute paths recursively without any UI races or browser navigation defaults.
   - **Pristine Archiving**: Compiling Tauri bundles yields a `.dmg` and a `.app` package. To zip the `.app` package cleanly for macOS while preserving directory permissions, symlinks, and macOS resource forks, utilized the macOS native `ditto -c -k --sequesterRsrc --keepParent` command instead of standard `zip`.
 
+---
+
+## 12. Background Scanning, Progress Emitters, & User Cancellation UX (v0.0.5)
+- **Context**: Performing recursive directory walks and BPE tokenizations for huge folders directly in a standard Tauri command blocking loop freezes the application's single UI thread, triggering macOS "spinning beach ball" crashes.
+- **Resolution**:
+  - **Tokio Thread Spawning**: Converted the Tauri Rust command into an `async fn`. This automatically spawns the computation on Tokio's multi-threaded background pool, leaving the main UI loop fully responsive.
+  - **Two-Phase Crawling**: Split the background engine into two distinct phases: Phase 1 pre-scans paths to count total files in milliseconds, and Phase 2 loops to calculate tokens. This allows the frontend to show an exact progress completion percentage (processed vs. total files) from the first second.
+  - **Optimized Progress Emitting**: Streamed progress payloads (`window.emit("scan-progress", ...)`) periodically (throttled at ~1% steps using a modulo constraint) to prevent the Tauri IPC bridge from flooding and locking up the frontend render loop.
+  - **Atomic User Cancellation**: Implemented an atomic cancel static reference `CANCEL_FLAG: LazyLock<AtomicBool>` and `cancel_calculation` command. Checked `CANCEL_FLAG` on every file iteration, allowing immediate, safe computation terminations without leaking resources.
+  - **TypeScript Interface Syncing**: Declared mock-bridge mappings in `src/main.tsx` and mirrored the matching `cancelCalculation` promise signatures in the `ElectronAPI` interface of `src/App.tsx`, eliminating compiler type conflicts.
 
